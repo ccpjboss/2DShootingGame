@@ -143,7 +143,6 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
             };
 
             game_state.enemies_vector.push(Enemy {
-                preset: car_sprite,
                 health: car_health,
                 smart: false,
                 label: car_label.clone(),
