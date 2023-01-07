@@ -3,6 +3,12 @@ use rusty_engine::prelude::*;
 
 const MARBLE_SPEED: f32 = 600.0;
 const CAR_SPEED: f32 = 250.0;
+#[derive(Debug)]
+struct Enemy {
+    health: i32,
+    smart: bool,
+    label: String,
+}
 
 struct GameState {
     marble_labels: Vec<String>,
@@ -11,13 +17,7 @@ struct GameState {
     score: i32,
     high_score: i32,
     game_over: bool,
-}
-
-struct Enemy {
-    preset: SpritePreset,
-    health: i32,
-    smart: bool,
-    label: String
+    enemies_vector: Vec<Enemy>,
 }
 
 impl Default for GameState {
@@ -29,6 +29,7 @@ impl Default for GameState {
             high_score: 0,
             spawn_time: Timer::from_seconds(0.0, false),
             game_over: false,
+            enemies_vector: Vec::new(),
         }
     }
 }
@@ -103,9 +104,17 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
         }
     }
     for label in labels_to_delete {
-        engine.sprites.remove(&label);
         if label.starts_with("marble") {
+            engine.sprites.remove(&label);
             game_state.marble_labels.push(label);
+        } else if label.starts_with("car") {
+            engine.sprites.remove(&label);
+            let index = game_state
+                .enemies_vector
+                .iter()
+                .position(|e| e.label == label)
+                .unwrap();
+            game_state.enemies_vector.remove(index);
         }
     }
 
@@ -126,12 +135,21 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
                 SpritePreset::RacingCarYellow,
             ];
 
-            let car_sprite = *cars_to_choose
-                .iter()
-                .choose(&mut thread_rng())
-                .unwrap();
+            let car_sprite = *cars_to_choose.iter().choose(&mut thread_rng()).unwrap();
 
-            let car_to_spawn = engine.add_sprite(car_label, car_sprite);
+            let car_health = match car_sprite {
+                SpritePreset::RacingCarGreen => 2,
+                _ => 1,
+            };
+
+            game_state.enemies_vector.push(Enemy {
+                preset: car_sprite,
+                health: car_health,
+                smart: false,
+                label: car_label.clone(),
+            });
+
+            let car_to_spawn = engine.add_sprite(car_label.clone(), car_sprite);
             car_to_spawn.translation.x = -740.0;
             car_to_spawn.translation.y = thread_rng().gen_range(-100.0..325.0);
             car_to_spawn.collision = true;
@@ -153,19 +171,35 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
             continue;
         }
 
+        for label in colision.pair {
+            if label.starts_with("marble") {
+                engine.sprites.remove(&label);
+                game_state.marble_labels.push(label);
+            } else if label.starts_with("car") {
+                let enemy = game_state
+                    .enemies_vector
+                    .iter_mut()
+                    .find(|e| e.label == label)
+                    .unwrap();
+                enemy.health -= 1;
+                if enemy.health == 0 {
         game_state.score += 1;
         let score_t = engine.texts.get_mut("score").unwrap();
         score_t.value = format!("Score: {}", game_state.score);
+                    // Handle high score
         if game_state.score > game_state.high_score {
             game_state.high_score = game_state.score;
             let high_score_t = engine.texts.get_mut("high_score").unwrap();
             high_score_t.value = format!("High Score: {}", game_state.high_score);
         }
-
-        for label in colision.pair {
             engine.sprites.remove(&label);
-            if label.starts_with("marble") {
-                game_state.marble_labels.push(label);
+                    let index = game_state
+                        .enemies_vector
+                        .iter()
+                        .position(|e| e.label == label)
+                        .unwrap();
+                    game_state.enemies_vector.remove(index);
+                }
             }
             engine.audio_manager.play_sfx(SfxPreset::Confirmation1, 0.2);
         }
