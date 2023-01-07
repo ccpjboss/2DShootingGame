@@ -17,7 +17,9 @@ impl Default for GameState {
             marble_labels: vec!["marble1".into(), "marble2".into(), "marble3".into()],
             cars_left: 25,
             score: 0,
+            high_score: 0,
             spawn_time: Timer::from_seconds(0.0, false),
+            game_over: false,
         }
     }
 }
@@ -41,11 +43,14 @@ fn main() {
     barrel.layer = 10.0;
 
     // Text
-    let cars_left_t = game.add_text("cars_left", format!("Cars left: 0"));
+    let cars_left_t = game.add_text("cars_left", "Cars left: 0");
     cars_left_t.translation = Vec2::new(540.0, -320.0);
 
     let score_t = game.add_text("score", "Score: 0");
     score_t.translation = Vec2::new(540.0, -280.0);
+
+    let high_score_t = game.add_text("high_score", "High Score: 0");
+    high_score_t.translation = Vec2::new(540.0, -240.0);
 
     game.add_logic(game_logic);
     game.run(GameState::default());
@@ -102,8 +107,8 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
             game_state.cars_left -= 1;
             let cars_left_t = engine.texts.get_mut("cars_left").unwrap();
             cars_left_t.value = format!("Cars left: {}", game_state.cars_left);
-            let car_label = format!("car{}", game_state.cars_left);
 
+            let car_label = format!("car{}", game_state.cars_left);
             let cars_to_choose = vec![
                 SpritePreset::RacingCarBlack,
                 SpritePreset::RacingCarRed,
@@ -112,11 +117,11 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
                 SpritePreset::RacingCarYellow,
             ];
 
-            let car_sprite = cars_to_choose
+            let car_sprite = *cars_to_choose
                 .iter()
                 .choose(&mut thread_rng())
-                .unwrap()
-                .clone();
+                .unwrap();
+
             let car_to_spawn = engine.add_sprite(car_label, car_sprite);
             car_to_spawn.translation.x = -740.0;
             car_to_spawn.translation.y = thread_rng().gen_range(-100.0..325.0);
@@ -142,6 +147,11 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
         game_state.score += 1;
         let score_t = engine.texts.get_mut("score").unwrap();
         score_t.value = format!("Score: {}", game_state.score);
+        if game_state.score > game_state.high_score {
+            game_state.high_score = game_state.score;
+            let high_score_t = engine.texts.get_mut("high_score").unwrap();
+            high_score_t.value = format!("High Score: {}", game_state.high_score);
+        }
 
         for label in colision.pair {
             engine.sprites.remove(&label);
@@ -150,5 +160,29 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
             }
             engine.audio_manager.play_sfx(SfxPreset::Confirmation1, 0.2);
         }
+    }
+
+    // Check end of game. The game ends when there are no car sprites and game_state.cars_left == 0
+    let mut car_sprites = engine
+        .sprites
+        .values()
+        .filter(|sprite| sprite.label.starts_with("car"))
+        .peekable();
+
+    if car_sprites.next().is_none() && game_state.cars_left == 0 && !game_state.game_over {
+        game_state.game_over = true;
+        let game_over_t = engine.add_text("game_over_text", "Game Over! \nPress R to play again");
+        game_over_t.translation = Vec2::new(0.0, 0.0);
+        engine.audio_manager.play_sfx(SfxPreset::Jingle2, 0.2);
+    }
+
+    // Start the game again
+    if engine.keyboard_state.just_pressed(KeyCode::R) && game_state.game_over {
+        game_state.game_over = false;
+        game_state.cars_left = 25;
+        game_state.score = 0;
+        let score_t = engine.texts.get_mut("score").unwrap();
+        score_t.value = format!("Score: {}", game_state.score);
+        engine.texts.remove("game_over_text").unwrap();
     }
 }
