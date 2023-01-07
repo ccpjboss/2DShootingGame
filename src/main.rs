@@ -9,6 +9,15 @@ struct GameState {
     cars_left: i32,
     spawn_time: Timer,
     score: i32,
+    high_score: i32,
+    game_over: bool,
+}
+
+struct Enemy {
+    preset: SpritePreset,
+    health: i32,
+    smart: bool,
+    label: String
 }
 
 impl Default for GameState {
