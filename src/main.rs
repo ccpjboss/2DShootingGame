@@ -2,18 +2,21 @@ use rand::prelude::*;
 use rusty_engine::prelude::*;
 
 const MARBLE_SPEED: f32 = 600.0;
-const CAR_SPEED: f32 = 250.0;
+const POWERUP_SPEED: f32 = 300.0;
+
 #[derive(Debug)]
 struct Enemy {
     health: i32,
     smart: bool,
     label: String,
+    speed: f32,
 }
 
 struct GameState {
     marble_labels: Vec<String>,
     cars_left: i32,
     spawn_time: Timer,
+    explosion_timer: Timer,
     score: i32,
     high_score: i32,
     game_over: bool,
@@ -28,8 +31,36 @@ impl Default for GameState {
             score: 0,
             high_score: 0,
             spawn_time: Timer::from_seconds(0.0, false),
+            explosion_timer: Timer::from_seconds(thread_rng().gen_range(2.0..7.0), true),
             game_over: false,
             enemies_vector: Vec::new(),
+        }
+    }
+}
+
+impl GameState {
+    fn get_enemy(&mut self, label: &String) -> &mut Enemy {
+        return self
+            .enemies_vector
+            .iter_mut()
+            .find(|e| e.label == *label)
+            .unwrap();
+    }
+
+    fn get_enemy_index(&mut self, label: &String) -> usize {
+        return self
+            .enemies_vector
+            .iter()
+            .position(|e| e.label == *label)
+            .unwrap();
+    }
+
+    fn increment_score(&mut self, score_t: &mut Text, high_score_t: &mut Text) {
+        self.score += 1;
+        score_t.value = format!("Score: {}", self.score);
+        if self.score > self.high_score {
+            self.high_score = self.score;
+            high_score_t.value = format!("High Score: {}", self.high_score);
         }
     }
 }
@@ -104,11 +135,10 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
         }
     }
     for label in labels_to_delete {
+        engine.sprites.remove(&label);
         if label.starts_with("marble") {
-            engine.sprites.remove(&label);
             game_state.marble_labels.push(label);
         } else if label.starts_with("car") {
-            engine.sprites.remove(&label);
             let index = game_state
                 .enemies_vector
                 .iter()
@@ -142,13 +172,28 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
                 _ => 1,
             };
 
+            let car_behaviour = match car_sprite {
+                SpritePreset::RacingCarBlack => true,
+                _ => false,
+            };
+
+            let car_speed: f32 = match car_sprite {
+                SpritePreset::RacingCarBlack => 150.0,
+                SpritePreset::RacingCarBlue => 200.0,
+                SpritePreset::RacingCarGreen => 250.0,
+                SpritePreset::RacingCarYellow => 300.0,
+                SpritePreset::RacingCarRed => 350.0,
+                _ => 0.0,
+            };
+
             game_state.enemies_vector.push(Enemy {
                 health: car_health,
-                smart: false,
+                smart: car_behaviour,
                 label: car_label.clone(),
+                speed: car_speed,
             });
 
-            let car_to_spawn = engine.add_sprite(car_label.clone(), car_sprite);
+            let car_to_spawn = engine.add_sprite(car_label, car_sprite);
             car_to_spawn.translation.x = -740.0;
             car_to_spawn.translation.y = thread_rng().gen_range(-100.0..325.0);
             car_to_spawn.collision = true;
@@ -159,7 +204,30 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
         .sprites
         .values_mut()
         .filter(|sprite| sprite.label.starts_with("car"))
-        .for_each(|car| car.translation.x += CAR_SPEED * engine.delta_f32);
+        .for_each(|car| {
+            let car_speed = game_state.get_enemy(&car.label).speed;
+            car.translation.x += car_speed * engine.delta_f32
+        });
+
+    // Spawn powerups
+    if game_state
+        .explosion_timer
+        .tick(engine.delta)
+        .just_finished()
+    {
+        let explosion_s = engine.add_sprite("power_explosion", "sprite/racing/explosion.png");
+        explosion_s.translation.x = -740.0;
+        explosion_s.translation.y = thread_rng().gen_range(-100.0..325.0);
+        explosion_s.collision = true;
+        explosion_s.scale = 0.5;
+    }
+
+    // Move PowerUps
+    engine
+        .sprites
+        .values_mut()
+        .filter(|sprite| sprite.label.starts_with("power"))
+        .for_each(|s| s.translation.x += POWERUP_SPEED * engine.delta_f32);
 
     for colision in engine.collision_events.drain(..) {
         if colision.state == CollisionState::End {
@@ -175,29 +243,34 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
                 engine.sprites.remove(&label);
                 game_state.marble_labels.push(label);
             } else if label.starts_with("car") {
-                let enemy = game_state
-                    .enemies_vector
-                    .iter_mut()
-                    .find(|e| e.label == label)
-                    .unwrap();
+                let enemy = game_state.get_enemy(&label);
                 enemy.health -= 1;
                 if enemy.health == 0 {
-        game_state.score += 1;
-        let score_t = engine.texts.get_mut("score").unwrap();
-        score_t.value = format!("Score: {}", game_state.score);
-                    // Handle high score
-        if game_state.score > game_state.high_score {
-            game_state.high_score = game_state.score;
-            let high_score_t = engine.texts.get_mut("high_score").unwrap();
-            high_score_t.value = format!("High Score: {}", game_state.high_score);
-        }
-            engine.sprites.remove(&label);
-                    let index = game_state
-                        .enemies_vector
-                        .iter()
-                        .position(|e| e.label == label)
-                        .unwrap();
+                    let [score_t, high_score_t] =
+                        engine.texts.get_many_mut(["score", "high_score"]).unwrap();
+                    game_state.increment_score(score_t, high_score_t);
+
+                    let index = game_state.get_enemy_index(&label);
                     game_state.enemies_vector.remove(index);
+                    engine.sprites.remove(&label);
+                }
+            } else if label.starts_with("power_explosion") {
+                engine.sprites.remove(&label);
+                engine.audio_manager.play_sfx("sfx/explosion.mp3", 0.5);
+                let mut labels_to_delete: Vec<String> = Vec::new();
+                for (label, sprite) in engine.sprites.iter() {
+                    if sprite.label.starts_with("car") {
+                        labels_to_delete.push(label.to_string());
+                        let index = game_state.get_enemy_index(&label);
+                        game_state.enemies_vector.remove(index);
+                    }
+        }
+
+                for label in labels_to_delete {
+                    let [score_t, high_score_t] =
+                        engine.texts.get_many_mut(["score", "high_score"]).unwrap();
+                    game_state.increment_score(score_t, high_score_t);
+            engine.sprites.remove(&label);
                 }
             }
             engine.audio_manager.play_sfx(SfxPreset::Confirmation1, 0.2);
