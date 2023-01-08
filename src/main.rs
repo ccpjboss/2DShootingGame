@@ -260,7 +260,9 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
                 let mut labels_to_delete: Vec<String> = Vec::new();
                 for (label, sprite) in engine.sprites.iter() {
                     if sprite.label.starts_with("car") {
-                        labels_to_delete.push(label.to_string())
+                        labels_to_delete.push(label.to_string());
+                        let index = game_state.get_enemy_index(&label);
+                        game_state.enemies_vector.remove(index);
                     }
         }
 
