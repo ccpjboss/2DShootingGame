@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use rand::prelude::*;
 use rusty_engine::prelude::*;
 
@@ -21,6 +23,7 @@ struct GameState {
     high_score: i32,
     game_over: bool,
     enemies_vector: Vec<Enemy>,
+    power_spawned: bool,
 }
 
 impl Default for GameState {
@@ -31,9 +34,10 @@ impl Default for GameState {
             score: 0,
             high_score: 0,
             spawn_time: Timer::from_seconds(0.0, false),
-            explosion_timer: Timer::from_seconds(thread_rng().gen_range(2.0..7.0), true),
+            explosion_timer: Timer::from_seconds(thread_rng().gen_range(5.0..7.0), true),
             game_over: false,
             enemies_vector: Vec::new(),
+            power_spawned: false,
         }
     }
 }
@@ -206,7 +210,11 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
         .filter(|sprite| sprite.label.starts_with("car"))
         .for_each(|car| {
             let car_speed = game_state.get_enemy(&car.label).speed;
-            car.translation.x += car_speed * engine.delta_f32
+            car.translation.x += car_speed * engine.delta_f32;
+            if game_state.get_enemy(&car.label).smart {
+                car.translation.y +=
+                    5.0 * (2.0 * PI * 0.5 * engine.time_since_startup_f64 as f32).sin();
+            }
         });
 
     // Spawn powerups
@@ -214,12 +222,14 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
         .explosion_timer
         .tick(engine.delta)
         .just_finished()
+        && game_state.power_spawned == false
     {
         let explosion_s = engine.add_sprite("power_explosion", "sprite/racing/explosion.png");
         explosion_s.translation.x = -740.0;
         explosion_s.translation.y = thread_rng().gen_range(-100.0..325.0);
         explosion_s.collision = true;
         explosion_s.scale = 0.5;
+        game_state.power_spawned = true;
     }
 
     // Move PowerUps
@@ -296,6 +306,7 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
         game_state.game_over = false;
         game_state.cars_left = 25;
         game_state.score = 0;
+        game_state.power_spawned = false;
         let score_t = engine.texts.get_mut("score").unwrap();
         score_t.value = format!("Score: {}", game_state.score);
         engine.texts.remove("game_over_text").unwrap();
