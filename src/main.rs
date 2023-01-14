@@ -1,4 +1,4 @@
-use std::f32::consts::PI;
+use std::f32::consts::{PI, FRAC_PI_2};
 
 use rand::prelude::*;
 use rusty_engine::prelude::*;
@@ -12,6 +12,7 @@ struct Enemy {
     smart: bool,
     label: String,
     speed: f32,
+    spawn_time: f32,
 }
 
 struct GameState {
@@ -182,7 +183,7 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
             };
 
             let car_speed: f32 = match car_sprite {
-                SpritePreset::RacingCarBlack => 150.0,
+                SpritePreset::RacingCarBlack => 200.0,
                 SpritePreset::RacingCarBlue => 200.0,
                 SpritePreset::RacingCarGreen => 250.0,
                 SpritePreset::RacingCarYellow => 300.0,
@@ -195,6 +196,7 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
                 smart: car_behaviour,
                 label: car_label.clone(),
                 speed: car_speed,
+                spawn_time: engine.time_since_startup_f64 as f32,
             });
 
             let car_to_spawn = engine.add_sprite(car_label, car_sprite);
@@ -212,8 +214,10 @@ fn game_logic(engine: &mut Engine, game_state: &mut GameState) {
             let car_speed = game_state.get_enemy(&car.label).speed;
             car.translation.x += car_speed * engine.delta_f32;
             if game_state.get_enemy(&car.label).smart {
+                let car_time = game_state.get_enemy(&car.label).spawn_time;
                 car.translation.y +=
-                    5.0 * (2.0 * PI * 0.5 * engine.time_since_startup_f64 as f32).sin();
+                    3.0 * (2.0 * PI * 0.5 * (engine.time_since_startup_f64 as f32 - car_time)).sin();
+                car.rotation = (PI*(engine.time_since_startup_f64 as f32 - car_time) - FRAC_PI_2).cos();
             }
         });
 
